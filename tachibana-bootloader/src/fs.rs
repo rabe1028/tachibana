@@ -1,5 +1,5 @@
 use alloc::boxed::Box;
-use alloc::vec::Vec;
+use alloc::vec::{self, Vec};
 use uefi::prelude::*;
 use uefi::proto::media::file::{
     Directory, File, FileAttribute, FileInfo, FileMode, FileType, RegularFile,
@@ -37,21 +37,6 @@ impl Root {
     }
 }
 
-
-
-pub fn open_root_dir(image: Handle, bs: &BootServices) -> Root {
-    let sfs = bs
-        .get_image_file_system(image)
-        .expect_success("Failed to get file system");
-    let root = unsafe { &mut *sfs.get() }
-        .open_volume()
-        .expect_success("Failed to get volume");
-
-    Root {
-        root: root
-    }
-}
-
 pub fn create(dir: &mut Directory, filename: &str, create_dir: bool) -> FileType {
     let attr = if create_dir {
         FileAttribute::DIRECTORY
@@ -85,11 +70,17 @@ pub fn open_file(dir: &mut Directory, filename: &str) -> RegularFile {
     }
 }
 
-pub fn read_file_to_vec(file: &mut RegularFile) -> Vec<u8> {
-    let size = get_file_info(file).file_size() as usize;
-    let mut buf = vec![0; size];
-    file.read(&mut buf).unwrap_success();
-    buf
+pub trait RegularFileExt {
+    fn to_vec(&mut self) -> Vec<u8>;
+}
+
+impl RegularFileExt for RegularFile {
+    fn to_vec(&mut self) -> Vec<u8> {
+        let size = get_file_info(self).file_size() as usize;
+        let mut buf = vec![0; size];
+        self.read(&mut buf).unwrap_success();
+        buf
+    }
 }
 
 pub fn get_file_info(file: &mut impl File) -> Box<FileInfo> {
