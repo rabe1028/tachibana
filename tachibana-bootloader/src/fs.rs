@@ -5,21 +5,19 @@ use uefi::proto::media::file::{
     Directory, File, FileAttribute, FileInfo, FileMode, FileType, RegularFile,
 };
 pub struct Root {
-    root: Directory
+    root: Directory,
 }
 
 impl Root {
     pub fn open(image: Handle, bs: &BootServices) -> Self {
         let sfs = bs
-        .get_image_file_system(image)
-        .expect_success("Failed to get file system");
+            .get_image_file_system(image)
+            .expect_success("Failed to get file system");
         let root = unsafe { &mut *sfs.get() }
             .open_volume()
             .expect_success("Failed to get volume");
 
-        Root {
-            root: root
-        }
+        Root { root: root }
     }
 
     pub fn create_file(&mut self, filename: &str) -> RegularFile {
@@ -32,7 +30,14 @@ impl Root {
     pub fn create_dir(&mut self, dirname: &str) -> Directory {
         match create(&mut (self.root), dirname, true) {
             FileType::Regular(_) => panic!("Not a directory: {}", dirname),
-            FileType::Dir(directory) => directory
+            FileType::Dir(directory) => directory,
+        }
+    }
+
+    pub fn open_file(&mut self, filename: &str) -> RegularFile {
+        match open(&mut (self.root), filename) {
+            FileType::Regular(file) => file,
+            FileType::Dir(_) => panic!("Not a regular file: {}", filename),
         }
     }
 }

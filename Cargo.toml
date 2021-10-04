@@ -1,5 +1,6 @@
 [workspace]
 members = [
     "tachibana-common",
-    "tachibana-bootloader"
+    "tachibana-bootloader",
+    "tachibana-kernel"
 ]

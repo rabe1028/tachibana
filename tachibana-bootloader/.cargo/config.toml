@@ -5,5 +5,5 @@ target = "x86_64-unknown-uefi"
 build-std = ["core", "compiler_builtins", "alloc"]
 build-std-features = ["compiler-builtins-mem"]
 
-[target.x86_64-unknown-uefi]
-runner = "./run-qemu.sh"
+# [target.x86_64-unknown-uefi]
+# runner = "../run-qemu.sh"

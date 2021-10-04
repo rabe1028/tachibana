@@ -1,0 +1,7 @@
+[build]
+target = "./x86_64-unknown-tachibana-elf.json"
+# target = "x86_64-unknown-none-elf" // これ存在しない
+
+[unstable]
+build-std = ["core", "compiler_builtins", "alloc"]
+build-std-features = ["compiler-builtins-mem"]

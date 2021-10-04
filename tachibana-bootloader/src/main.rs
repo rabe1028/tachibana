@@ -12,15 +12,21 @@ mod fs;
 
 use crate::alloc::vec::*;
 use crate::fs::*;
+use alloc::vec;
 use core::fmt::Write;
 use core::panic::PanicInfo;
 use log::*;
 use uefi::prelude::*;
+use uefi::proto::console::gop::{GraphicsOutput, PixelFormat};
 use uefi::proto::media::file::{
     Directory, File, FileAttribute, FileHandle, FileInfo, FileMode, FileType,
 };
 use uefi::table::boot::AllocateType;
 use uefi::table::boot::{MemoryDescriptor, MemoryType};
+
+use goblin::elf::{self, Elf};
+
+use uefi::table::Runtime;
 
 #[entry]
 fn efi_main(image: Handle, mut system_table: SystemTable<Boot>) -> Status {
@@ -46,6 +52,20 @@ fn efi_main(image: Handle, mut system_table: SystemTable<Boot>) -> Status {
     }
 
     memory_map("memmap", image, system_table.boot_services());
+
+    let entry_point_addr = load_kernel(image, system_table.boot_services());
+
+    info!("entry_point_addr = 0x{:x}", entry_point_addr);
+    let entry_point: extern "sysv64" fn(&tachibana_common::frame_buffer::FrameBuffer) =
+        unsafe { core::mem::transmute(entry_point_addr) };
+
+    info!("get_frame_buffer_config");
+    let frame_buffer = get_frame_buffer(system_table.boot_services());
+
+    info!("exit_boot_services");
+    let _st = exit_boot_services(image, system_table);
+
+    entry_point(&frame_buffer);
 
     loop {}
 }
@@ -95,3 +115,113 @@ fn memory_map(filepath: &str, image: uefi::Handle, bt: &BootServices) {
     info!("done.");
 }
 
+fn load_kernel(image: Handle, bs: &BootServices) -> usize {
+    const KERNEL_BASE_ADDR: usize = 0x100000;
+    const EFI_PAGE_SIZE: usize = 0x1000;
+
+    let mut root_dir = Root::open(image, bs);
+    let mut file = root_dir.open_file("kernel.elf");
+
+    // copy elf file to KERNEL_BASE_ADDR
+    let size = get_file_info(&mut file).file_size() as usize;
+    let mut buf = {
+        let kernel_ptr = bs
+            .allocate_pool(MemoryType::LOADER_DATA, size)
+            .unwrap_success();
+        info!(
+            "buffer for elf : ptr = {}, size = {}",
+            kernel_ptr as usize, size
+        );
+        unsafe { core::slice::from_raw_parts_mut(kernel_ptr, size) }
+    };
+
+    // file.read(buf).unwrap_success();
+
+    // let mut buf = vec![0; size];
+    file.read(&mut buf).unwrap_success();
+
+    // loading elf
+    let elf = elf::Elf::parse(&buf).expect("Failed to parse ELF");
+
+    let (kernel_first_addr, kernel_last_addr) = calc_load_address_range(&elf);
+
+    info!("Kernel: {} - {}", kernel_first_addr, kernel_last_addr);
+
+    let num_pages = (kernel_last_addr - kernel_first_addr + EFI_PAGE_SIZE - 1) / EFI_PAGE_SIZE;
+    info!("num_pages: {}", num_pages);
+
+    // kernel_base_addr -> kernel_first_addrにすると、エラーが発生
+    bs.allocate_pages(
+        AllocateType::Address(KERNEL_BASE_ADDR),
+        MemoryType::LOADER_DATA,
+        num_pages,
+    )
+    .expect_success("Failed to allocate pages for kernel");
+    // NOTFOUNDは、メモリを確保できない時
+    // ref : https://tnishinaga.hatenablog.com/entry/2015/10/13/033536
+
+    copy_load_segments(&elf, &buf);
+
+    elf.entry as usize
+}
+
+fn calc_load_address_range(elf: &Elf) -> (usize, usize) {
+    let mut first = usize::MAX;
+    let mut last = 0;
+    for ph in elf.program_headers.iter() {
+        if ph.p_type != elf::program_header::PT_LOAD {
+            continue;
+        }
+
+        info!("{:?}", ph);
+        first = last.min(ph.p_vaddr as usize);
+        last = last.max((ph.p_vaddr + ph.p_memsz) as usize);
+    }
+
+    (first, last)
+}
+
+fn copy_load_segments(elf: &Elf, src: &[u8]) {
+    for ph in elf.program_headers.iter() {
+        if ph.p_type != elf::program_header::PT_LOAD {
+            continue;
+        }
+        let ofs = ph.p_offset as usize;
+        let fsize = ph.p_filesz as usize;
+        let msize = ph.p_memsz as usize;
+        let dest = unsafe { core::slice::from_raw_parts_mut(ph.p_vaddr as *mut u8, msize) };
+        dest[..fsize].copy_from_slice(&src[ofs..ofs + fsize]);
+        dest[fsize..].fill(0);
+    }
+}
+
+fn get_frame_buffer(bs: &BootServices) -> tachibana_common::frame_buffer::FrameBuffer {
+    use tachibana_common::*;
+
+    let gop = bs.locate_protocol::<GraphicsOutput>().unwrap_success();
+    let gop = unsafe { &mut *gop.get() };
+    frame_buffer::FrameBuffer {
+        frame_buffer: gop.frame_buffer().as_mut_ptr(),
+        stride: gop.current_mode_info().stride() as u32,
+        resolution: (
+            gop.current_mode_info().resolution().0 as u32,
+            gop.current_mode_info().resolution().1 as u32,
+        ),
+        format: match gop.current_mode_info().pixel_format() {
+            PixelFormat::Rgb => frame_buffer::PixelFormat::Rgb,
+            PixelFormat::Bgr => frame_buffer::PixelFormat::Bgr,
+            f => panic!("Unsupported pixel format: {:?}", f),
+        },
+    }
+}
+
+fn exit_boot_services(image: Handle, st: SystemTable<Boot>) -> SystemTable<Runtime> {
+    let enough_mmap_size =
+        st.boot_services().memory_map_size() + 8 * core::mem::size_of::<MemoryDescriptor>();
+    let mut mmap_buf = vec![0; enough_mmap_size];
+    let (st, _) = st
+        .exit_boot_services(image, &mut mmap_buf[..])
+        .expect_success("Failed to exit boot services");
+    core::mem::forget(mmap_buf);
+    st
+}
