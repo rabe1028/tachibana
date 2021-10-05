@@ -10,16 +10,16 @@ extern crate alloc;
 
 mod fs;
 
-use crate::alloc::vec::*;
+
 use crate::fs::*;
 use alloc::vec;
-use core::fmt::Write;
-use core::panic::PanicInfo;
+
+
 use log::*;
 use uefi::prelude::*;
 use uefi::proto::console::gop::{GraphicsOutput, PixelFormat};
 use uefi::proto::media::file::{
-    Directory, File, FileAttribute, FileHandle, FileInfo, FileMode, FileType,
+    File,
 };
 use uefi::table::boot::AllocateType;
 use uefi::table::boot::{MemoryDescriptor, MemoryType};
@@ -29,7 +29,7 @@ use goblin::elf::{self, Elf};
 use uefi::table::Runtime;
 
 #[entry]
-fn efi_main(image: Handle, mut system_table: SystemTable<Boot>) -> Status {
+fn efi_main(image: Handle, system_table: SystemTable<Boot>) -> Status {
     // st.stdout().reset(false).unwrap_success();
     // writeln!(st.stdout(), "Hello, World!").unwrap();
 
@@ -141,7 +141,7 @@ fn load_kernel(image: Handle, bs: &BootServices) -> usize {
     file.read(&mut buf).unwrap_success();
 
     // loading elf
-    let elf = elf::Elf::parse(&buf).expect("Failed to parse ELF");
+    let elf = elf::Elf::parse(buf).expect("Failed to parse ELF");
 
     let (kernel_first_addr, kernel_last_addr) = calc_load_address_range(&elf);
 
@@ -160,7 +160,7 @@ fn load_kernel(image: Handle, bs: &BootServices) -> usize {
     // NOTFOUNDは、メモリを確保できない時
     // ref : https://tnishinaga.hatenablog.com/entry/2015/10/13/033536
 
-    copy_load_segments(&elf, &buf);
+    copy_load_segments(&elf, buf);
 
     elf.entry as usize
 }

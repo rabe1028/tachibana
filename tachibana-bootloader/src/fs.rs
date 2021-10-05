@@ -1,5 +1,5 @@
 use alloc::boxed::Box;
-use alloc::vec::{self, Vec};
+use alloc::vec::{Vec};
 use uefi::prelude::*;
 use uefi::proto::media::file::{
     Directory, File, FileAttribute, FileInfo, FileMode, FileType, RegularFile,
@@ -17,7 +17,7 @@ impl Root {
             .open_volume()
             .expect_success("Failed to get volume");
 
-        Root { root: root }
+        Root { root }
     }
 
     pub fn create_file(&mut self, filename: &str) -> RegularFile {
