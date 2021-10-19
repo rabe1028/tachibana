@@ -1,5 +1,5 @@
 use alloc::boxed::Box;
-use alloc::vec::{Vec};
+use alloc::vec::Vec;
 use uefi::prelude::*;
 use uefi::proto::media::file::{
     Directory, File, FileAttribute, FileInfo, FileMode, FileType, RegularFile,

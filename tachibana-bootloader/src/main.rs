@@ -10,17 +10,13 @@ extern crate alloc;
 
 mod fs;
 
-
 use crate::fs::*;
 use alloc::vec;
-
 
 use log::*;
 use uefi::prelude::*;
 use uefi::proto::console::gop::{GraphicsOutput, PixelFormat};
-use uefi::proto::media::file::{
-    File,
-};
+use uefi::proto::media::file::File;
 use uefi::table::boot::AllocateType;
 use uefi::table::boot::{MemoryDescriptor, MemoryType};
 
