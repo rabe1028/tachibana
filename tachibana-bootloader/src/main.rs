@@ -14,6 +14,7 @@ use crate::fs::*;
 use alloc::vec;
 
 use log::*;
+use tachibana_common::frame_buffer::FrameBufferPayload;
 use uefi::prelude::*;
 use uefi::proto::console::gop::{GraphicsOutput, PixelFormat};
 use uefi::proto::media::file::File;
@@ -196,19 +197,20 @@ fn get_frame_buffer(bs: &BootServices) -> tachibana_common::frame_buffer::FrameB
 
     let gop = bs.locate_protocol::<GraphicsOutput>().unwrap_success();
     let gop = unsafe { &mut *gop.get() };
-    frame_buffer::FrameBuffer {
-        frame_buffer: gop.frame_buffer().as_mut_ptr(),
-        stride: gop.current_mode_info().stride() as u32,
-        resolution: (
-            gop.current_mode_info().resolution().0 as u32,
-            gop.current_mode_info().resolution().1 as u32,
-        ),
-        format: match gop.current_mode_info().pixel_format() {
-            PixelFormat::Rgb => frame_buffer::PixelFormat::Rgb,
-            PixelFormat::Bgr => frame_buffer::PixelFormat::Bgr,
-            f => panic!("Unsupported pixel format: {:?}", f),
-        },
+
+    match gop.current_mode_info().pixel_format() {
+        PixelFormat::Rgb => frame_buffer::FrameBuffer::Rgb(FrameBufferPayload::new(
+            gop.frame_buffer().as_mut_ptr(), gop.current_mode_info().stride() as u32, 
+            (gop.current_mode_info().resolution().0 as u32,gop.current_mode_info().resolution().1 as u32)
+        )),
+        PixelFormat::Bgr => frame_buffer::FrameBuffer::Bgr(FrameBufferPayload::new(
+            gop.frame_buffer().as_mut_ptr(), gop.current_mode_info().stride() as u32, 
+            (gop.current_mode_info().resolution().0 as u32,
+            gop.current_mode_info().resolution().1 as u32)
+        )),
+        f => panic!("Unsupported pixel format: {:?}", f),
     }
+
 }
 
 fn exit_boot_services(image: Handle, st: SystemTable<Boot>) -> SystemTable<Runtime> {
